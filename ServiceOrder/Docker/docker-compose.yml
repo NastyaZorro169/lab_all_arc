@@ -1,0 +1,262 @@
+version: '2.1'
+
+services:
+  sosdb-node-1:
+    build:
+      context: mysql
+      dockerfile: Dockerfile
+    container_name: sosdb-node-1
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: sosdb
+      MYSQL_USER: sosuser
+      MYSQL_PASSWORD: sosuser
+      MYSQL_ROOT_PASSWORD: '1'
+    command: >
+      --sql-mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'
+      --general-log=ON
+      --log-queries-not-using-indexes=ON
+    networks:
+      - sos-network
+    ports:
+      - 3360:3306
+    healthcheck:
+      test: "/usr/bin/mysql --user=sosuser --password=sosuser --execute \"SHOW DATABASES;\""
+      timeout: 20s
+      retries: 20
+    volumes:
+      - sosdb-n1-data:/var/lib/mysql
+
+  sosdb-node-2:
+    build:
+      context: mysql
+      dockerfile: Dockerfile
+    container_name: sosdb-node-2
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: sosdb
+      MYSQL_USER: sosuser
+      MYSQL_PASSWORD: sosuser
+      MYSQL_ROOT_PASSWORD: '1'
+    command: >
+      --sql-mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'
+      --general-log=ON
+      --log-queries-not-using-indexes=ON
+    networks:
+      - sos-network
+    ports:
+      - 3361:3306
+    healthcheck:
+      test: "/usr/bin/mysql --user=sosuser --password=sosuser --execute \"SHOW DATABASES;\""
+      timeout: 20s
+      retries: 20
+    volumes:
+      - sosdb-n2-data:/var/lib/mysql
+
+  proxysql:
+    build:
+      context: proxysql
+      dockerfile: Dockerfile
+    container_name: proxysql
+    command: >
+      --initial
+    volumes:
+      - proxysql-data:/var/lib/proxysql
+    healthcheck:
+      test: "/usr/bin/mysql --user=sosuser --password=sosuser --execute \"SHOW DATABASES;\""
+      timeout: 20s
+      retries: 10
+    networks:
+      - sos-network
+    ports:
+      # Mysql Client Port
+      - "6033:6033"
+      # Mysql Admin Port
+      - "6032:6032"
+    depends_on:
+      sosdb-node-1:
+        condition: service_healthy
+      sosdb-node-2:
+        condition: service_healthy
+  
+  cache:
+    image: redis:6.2-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    command: redis-server --save 20 1 --loglevel warning 
+    networks:
+      - sos-network
+    volumes: 
+      - cache:/data
+  
+  kafka1:
+    image: 'bitnami/kafka:latest'
+    container_name: kafka1
+    restart: unless-stopped
+    environment:
+        KAFKA_ENABLE_KRAFT: "yes"
+        KAFKA_CFG_PROCESS_ROLES: "broker,controller"
+        KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+        KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+        KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+        KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka1:9092"
+        KAFKA_BROKER_ID: 1
+        KAFKA_CFG_NODE_ID: 1
+        KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka1:9093"
+        ALLOW_PLAINTEXT_LISTENER: "yes"
+        KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+        KAFKA_KRAFT_CLUSTER_ID: "dh6khitPSDGZSBOjNeTC_g"
+    volumes:
+        - kafka_volume1:/bitnami/kafka
+    networks:
+        - sos-network
+        
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.4.0
+    ports:
+      - "8888:8181"
+    environment:
+      KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: "kafka1:9092"
+      KAFKA_CLUSTERS_0_NAME: "kraft"
+    networks:
+      - sos-network
+
+  user_service:
+    build:
+      context: UserService
+      dockerfile: Dockerfile
+    container_name: user_service
+    restart: unless-stopped
+    environment:
+      - DB_HOST=proxysql
+      - DB_PORT=6033
+      - DB_LOGIN=sosuser
+      - DB_PASSWORD=sosuser
+      - DB_DATABASE=sosdb
+      - CACHE=cache:6379
+      - QUEUE_HOST=kafka1:9092
+      - QUEUE_TOPIC=event_server
+      - QUEUE_GROUP_ID=0    
+      - JWT_KEY=0123456789ABCDEF0123456789ABCDEF
+    ports:
+      - 8080:8080
+    networks:
+      - sos-network
+    depends_on:
+      cache:
+        condition: service_started
+      proxysql:
+        condition: service_started
+      kafka1:
+        condition: service_started
+      db_writer:
+        condition: service_started
+  
+  db_writer:
+    build:
+      context: db_writer
+      dockerfile: Dockerfile
+    container_name: db_writer
+    restart: unless-stopped
+    environment:
+      - DB_HOST=proxysql
+      - DB_PORT=6033
+      - DB_LOGIN=sosuser
+      - DB_PASSWORD=sosuser
+      - DB_DATABASE=sosdb
+      - CACHE=cache:6379
+      - QUEUE_HOST=kafka1:9092
+      - QUEUE_TOPIC=event_server
+      - QUEUE_GROUP_ID=0
+    networks:
+      - sos-network
+    depends_on:   
+      proxysql:
+        condition: service_started
+      kafka1:
+        condition: service_started
+
+  service_service:
+    build:
+      context: ServiceService
+      dockerfile: Dockerfile
+    container_name: service_service
+    restart: unless-stopped
+    environment:
+      - SERVICE_HOST=user_service
+      - DB_HOST=proxysql
+      - DB_PORT=6033
+      - DB_LOGIN=sosuser
+      - DB_PASSWORD=sosuser
+      - DB_DATABASE=sosdb
+      - CACHE=cache:6379
+      - JWT_KEY=0123456789ABCDEF0123456789ABCDEF
+    ports:
+      - 8081:8081
+    networks:
+      - sos-network
+    depends_on:
+      user_service:
+        condition: service_started
+
+  order_service:
+    build:
+      context: OrderService
+      dockerfile: Dockerfile
+    container_name: order_service
+    restart: unless-stopped
+    environment:
+      - SERVICE_HOST=user_service
+      - DB_HOST=proxysql
+      - DB_PORT=6033
+      - DB_LOGIN=sosuser
+      - DB_PASSWORD=sosuser
+      - DB_DATABASE=sosdb
+      - CACHE=cache:6379
+      - JWT_KEY=0123456789ABCDEF0123456789ABCDEF  
+    ports:
+      - 8082:8082
+    networks:
+      - sos-network
+    depends_on:
+      user_service:
+        condition: service_started
+
+    api_gateway:
+        tty: true
+        container_name: api_gateway
+        build:
+          context: api_gateway
+          dockerfile: Dockerfile
+        restart: unless-stopped
+        environment:
+          - DB_HOST=proxysql
+          - DB_PORT=6033
+          - DB_LOGIN=sosuser
+          - DB_PASSWORD=sosuser
+          - DB_DATABASE=sosdb
+          - JWT_KEY=0123456789ABCDEF0123456789ABCDEF
+          - CACHE=cache:6379
+          - QUEUE_HOST=kafka1:9092
+          - QUEUE_TOPIC=event_server
+          - QUEUE_GROUP_ID=0
+          - USER_ADDRESS=http://lab_user:8080
+          - ORDER_ADDRESS=http://lab_order:8081
+          - SERVICE_ADDRES=http://lab_service:8082
+        ports:
+          - 8888:8888
+        networks:
+          - sos-network
+
+volumes:
+  sosdb-n1-data:
+  sosdb-n2-data:
+  proxysql-data:
+  cache:
+  kafka_volume1:
+
+networks:
+  sos-network:
+    driver: "bridge"
+    external: false

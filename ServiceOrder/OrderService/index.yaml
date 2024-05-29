@@ -1,0 +1,101 @@
+openapi: '3.0.0'
+info:
+  version: '1.0.0'
+  title: 'API OrderService'
+  description: API для работы с заказами
+servers:
+  - url: http://localhost:8082
+    description: Order server
+paths:
+  /add_service:
+    post:
+      summary: Добавление услуги к заказу
+      parameters:
+      - name: user_id
+        description: Уникальный идентификатор заказчика
+        in: query
+        required: true
+        schema:
+          type: integer
+      - name: service_id
+        description: Уникальный идентификатор услуги
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: The service was added
+        404:
+          description: Error with adding the service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /get_order:
+    get:
+      summary: Получение заказа пользователя
+      parameters:
+      - name: user_id
+        description: Уникальный идентификатор заказчика
+        in: query
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: The order was gotten
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/orders'
+        404:
+          description: Error with getting the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    orders:
+      type: array
+      items:
+        $ref: '#/components/schemas/order'
+    order:
+      type: object
+      required:
+        - user_id
+        - service_id
+      properties:
+        user_id:
+          type: integer
+        service_id:
+          type: integer
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          description: Сообщение о ошибке
+          type: string
+  securitySchemes:
+      basicAuth:     
+        type: http
+        scheme: basic
+security:
+  - basicAuth: []

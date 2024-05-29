@@ -1,0 +1,173 @@
+openapi: '3.0.0'
+info:
+  version: '1.0.0'
+  title: 'API UserService'
+  description: API для просмотра, добавления и редактирования информации о пользователях
+servers:
+  - url: http://localhost:8080
+    description: User server
+paths:
+  /search:
+    get:
+      summary: Поиск пользователей по маске имени и фамилии
+      parameters:
+      - name: first_name
+        description: Имя
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: last_name
+        description: Фамилия
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The users for the provided masks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/users'
+        404:
+          description: No user found for the provided mask
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth:
+    get:
+      summary: Проверка аутентификации
+      responses:
+        '200':
+          description: User ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/result'
+        401:
+          description: Not authentication
+          content:
+            application/json:
+              schema:
+                type: string
+  /user:
+    post:
+      summary: Добавление нового пользователя
+      parameters:
+      - name: first_name
+        description: Имя пользователя
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: last_name
+        description: Фамилия пользователя
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: email
+        description: email пользователя
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: login
+        description: login пользователя
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: password
+        description: пароль пользователя
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Идентификатор, добавленного пользователя
+          content:
+            application/json:
+              schema:
+                type: integer
+        404:
+          description: Ошибка добавления пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Неожиданная ошибка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /ping:
+    get:
+      description: 'Checking that service is alive'
+      responses:
+        '200':
+          description: OK
+
+components:
+  schemas:
+    user_id:
+      description: Уникальный идентификатор пользователя
+      type: integer
+    users:
+      type: array
+      items:
+        $ref: '#/components/schemas/user'
+    user:
+      type: object
+      required:
+        - id
+        - first_name
+        - last_name
+        - email
+        - login
+        - password
+      properties:
+        id:
+          $ref: '#/components/schemas/user_id'
+        first_name:
+          type: string
+        last_name:
+          type: string
+        email:
+          type: string
+        login:
+          type: string
+        password:
+          type: string
+
+    result:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          $ref: '#/components/schemas/user_id'
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          description: Сообщение о ошибке
+          type: string
+  securitySchemes:
+      basicAuth:     
+        type: http
+        scheme: basic
+security:
+  - basicAuth: []

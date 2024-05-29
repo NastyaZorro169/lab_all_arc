@@ -1,0 +1,115 @@
+openapi: '3.0.0'
+info:
+  version: '1.0.0'
+  title: 'API ServiceService'
+  description: API для работы с сервисами
+servers:
+  - url: http://localhost:8081
+    description: Service server
+paths:
+  /create_service:
+    post:
+      summary: Создание сервиса
+      parameters:
+      - name: service_name
+        description: Имя
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: service_category
+        description: Категория
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: service_content
+        description: Содержание
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The service was created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/service'
+        404:
+          description: The service was not created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /get_services:
+    get:
+      summary: Получение всех услуг
+      responses:
+        '200':
+          description: Services were gotten
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/getservices'
+        404:
+          description: Error with servises
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        500:
+          description: Unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    service:
+      type: object
+      required:
+        - id
+        - service_name
+        - service_category
+        - service_content
+        - creator_id
+        - create_date
+      properties:
+        id:
+          type: integer
+        service_name:
+          type: string
+        service_category:
+          type: string
+        service_content:
+          type: string
+        creator_id:
+          type: integer
+        create_date:
+          type: string
+    getservices:
+      type: array
+      items:
+        $ref: '#/components/schemas/getservices'
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          description: Сообщение о ошибке
+          type: string
+  securitySchemes:
+      basicAuth:     
+        type: http
+        scheme: basic
+security:
+  - basicAuth: []
